@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pixel Brawlers</title>
+<style>
+  :root {
+    --bg-dark: #1a1a2e;
+    --bg-mid: #16213e;
+    --accent: #e94560;
+    --accent2: #0f9b8e;
+    --gold: #f4c542;
+    --text: #eaeaea;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% 20%, var(--bg-mid), var(--bg-dark));
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+  }
+  h1 {
+    letter-spacing: 4px;
+    font-size: 2.2em;
+    margin: 10px 0 4px;
+    text-shadow: 3px 3px 0 var(--accent), 6px 6px 0 rgba(0,0,0,0.3);
+  }
+  .subtitle {
+    color: #8888aa;
+    margin-bottom: 16px;
+    font-size: 0.85em;
+    letter-spacing: 2px;
+  }
+
+  /* ---- Character select ---- */
+  #selectScreen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .roster {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .charCard {
+    width: 150px;
+    background: rgba(255,255,255,0.04);
+    border: 2px solid #33334d;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .charCard:hover { transform: translateY(-6px); border-color: var(--gold); }
+  .charCard.selected { border-color: var(--accent); box-shadow: 0 0 14px var(--accent); }
+  .charCard.selectedP1 { border-color: var(--accent2); box-shadow: 0 0 14px var(--accent2); }
+  .charCard.selectedP2 { border-color: var(--accent); box-shadow: 0 0 14px var(--accent); }
+  .charCard.selectedP1.selectedP2 { border-color: var(--gold); box-shadow: 0 0 14px var(--gold); }
+  .pickTag { font-size: 0.6em; letter-spacing: 1px; margin-top: 4px; height: 14px; }
+  .charCard canvas { image-rendering: pixelated; margin-bottom: 8px; }
+  .charCard h3 { margin: 4px 0; font-size: 1em; letter-spacing: 1px; }
+  .charCard p { font-size: 0.7em; color: #aaaacc; margin: 2px 0; line-height: 1.4; }
+  .stat { display: flex; align-items: center; gap: 6px; font-size: 0.65em; margin: 3px 0; }
+  .statBar { flex: 1; height: 6px; background: #33334d; border-radius: 3px; overflow: hidden; }
+  .statFill { height: 100%; background: var(--accent2); }
+
+  button.playBtn {
+    margin-top: 6px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 12px 28px;
+    font-family: inherit;
+    font-size: 1em;
+    letter-spacing: 2px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  button.playBtn:hover { background: #ff5773; transform: scale(1.03); }
+  button.playBtn:disabled { background: #444460; cursor: not-allowed; transform: none; }
+
+  /* ---- Game screen ---- */
+  #gameScreen { display: none; flex-direction: column; align-items: center; }
+  #hud {
+    display: flex;
+    justify-content: space-between;
+    width: 720px;
+    max-width: 92vw;
+    margin-bottom: 6px;
+    font-size: 0.8em;
+  }
+  .hpWrap { width: 40%; }
+  .hpWrap.right { text-align: right; }
+  .hpLabel { margin-bottom: 3px; letter-spacing: 1px; }
+  .hpBarOuter {
+    height: 18px;
+    background: #33334d;
+    border: 2px solid #55557a;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .hpBarInner { height: 100%; background: linear-gradient(90deg, var(--accent2), #22d3aa); transition: width 0.2s; }
+  #p2 .hpBarInner { background: linear-gradient(90deg, #ff5773, var(--accent)); float: right; }
+
+  #arena {
+    border: 3px solid #55557a;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #26264a 0%, #1c1c38 70%, #14142a 100%);
+    display: block;
+  }
+
+  #controlsHint {
+    margin-top: 10px;
+    font-size: 0.72em;
+    color: #8888aa;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  #resultOverlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,10,20,0.85);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 14px;
+    z-index: 10;
+  }
+  #resultOverlay h2 {
+    font-size: 2.4em;
+    color: var(--gold);
+    text-shadow: 3px 3px 0 var(--accent);
+    letter-spacing: 3px;
+  }
+</style>
+</head>
+<body>
+
+<h1>PIXEL BRAWLERS</h1>
+<div class="subtitle" id="selectPrompt">PLAYER 1: CHOOSE YOUR FIGHTER</div>
+
+<div id="selectScreen">
+  <div class="roster" id="roster"></div>
+  <button class="playBtn" id="playBtn" disabled>FIGHT!</button>
+</div>
+
+<div id="gameScreen">
+  <div id="hud">
+    <div class="hpWrap" id="p1">
+      <div class="hpLabel" id="p1name">PLAYER 1</div>
+      <div class="hpBarOuter"><div class="hpBarInner" id="p1hp" style="width:100%"></div></div>
+    </div>
+    <div class="hpWrap right" id="p2">
+      <div class="hpLabel" id="p2name">PLAYER 2</div>
+      <div class="hpBarOuter"><div class="hpBarInner" id="p2hp" style="width:100%"></div></div>
+    </div>
+  </div>
+  <canvas id="arena" width="720" height="360"></canvas>
+  <div id="controlsHint">
+    PLAYER 1 — MOVE: A / D &nbsp;•&nbsp; JUMP: W &nbsp;•&nbsp; PUNCH: J &nbsp;•&nbsp; KICK: K &nbsp;•&nbsp; BLOCK: L<br>
+    PLAYER 2 — MOVE: ← / → &nbsp;•&nbsp; JUMP: ↑ &nbsp;•&nbsp; PUNCH: , &nbsp;•&nbsp; KICK: . &nbsp;•&nbsp; BLOCK: /
+  </div>
+</div>
+
+<div id="resultOverlay">
+  <h2 id="resultText">YOU WIN!</h2>
+  <button class="playBtn" id="rematchBtn">REMATCH</button>
+  <button class="playBtn" id="menuBtn" style="background:#444460;">CHARACTER SELECT</button>
+</div>
+
+<script>
+/* ============ CHARACTER DEFINITIONS ============ */
+const CHARACTERS = [
+  {
+    id: 'blaze', name: 'BLAZE', color: '#e94560', color2: '#ff8a5c',
+    desc: 'Fast striker with a fierce kick.',
+    speed: 5, power: 7, defense: 4, jump: 13
+  },
+  {
+    id: 'titan', name: 'TITAN', color: '#0f9b8e', color2: '#4fe0d0',
+    desc: 'Slow but hits like a truck.',
+    speed: 3, power: 9, defense: 8, jump: 10
+  },
+  {
+    id: 'nyx', name: 'NYX', color: '#8a5cf6', color2: '#c9a8ff',
+    desc: 'Balanced, agile shadow fighter.',
+    speed: 6, power: 6, defense: 5, jump: 15
+  },
+  {
+    id: 'goldenfist', name: 'GOLDENFIST', color: '#f4c542', color2: '#fff2b0',
+    desc: 'Tanky brawler, tough to knock down.',
+    speed: 4, power: 6, defense: 9, jump: 9
+  }
+];
+
+/* draw a simple pixel-art style fighter icon on a small canvas */
+function drawIcon(canvas, color, color2) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.imageSmoothingEnabled = false;
+  // body
+  ctx.fillStyle = color;
+  ctx.fillRect(w*0.35, h*0.25, w*0.3, h*0.4); // torso
+  ctx.fillStyle = color2;
+  ctx.fillRect(w*0.38, h*0.08, w*0.24, h*0.2); // head
+  ctx.fillStyle = color;
+  ctx.fillRect(w*0.2, h*0.3, w*0.15, h*0.3); // left arm
+  ctx.fillRect(w*0.65, h*0.3, w*0.15, h*0.3); // right arm
+  ctx.fillStyle = color2;
+  ctx.fillRect(w*0.35, h*0.65, w*0.13, h*0.3); // left leg
+  ctx.fillRect(w*0.52, h*0.65, w*0.13, h*0.3); // right leg
+}
+
+/* ============ CHARACTER SELECT UI (two players, same screen) ============ */
+const roster = document.getElementById('roster');
+const selectPrompt = document.getElementById('selectPrompt');
+const playBtn = document.getElementById('playBtn');
+let p1Char = null, p2Char = null;
+let selectingFor = 1;
+
+function refreshPrompt() {
+  selectPrompt.textContent = selectingFor === 1
+    ? 'PLAYER 1: CHOOSE YOUR FIGHTER'
+    : 'PLAYER 2: CHOOSE YOUR FIGHTER (CAN REPEAT)';
+  playBtn.disabled = !(p1Char && p2Char);
+}
+
+const cardEls = CHARACTERS.map(c => {
+  const card = document.createElement('div');
+  card.className = 'charCard';
+  card.innerHTML = `
+    <canvas width="60" height="60"></canvas>
+    <h3 style="color:${c.color}">${c.name}</h3>
+    <p>${c.desc}</p>
+    <div class="stat">SPD<div class="statBar"><div class="statFill" style="width:${c.speed*10}%"></div></div></div>
+    <div class="stat">PWR<div class="statBar"><div class="statFill" style="width:${c.power*10}%"></div></div></div>
+    <div class="stat">DEF<div class="statBar"><div class="statFill" style="width:${c.defense*10}%"></div></div></div>
+    <div class="pickTag"></div>
+  `;
+  drawIcon(card.querySelector('canvas'), c.color, c.color2);
+  card.addEventListener('click', () => {
+    if (selectingFor === 1) {
+      p1Char = c;
+      selectingFor = 2;
+    } else {
+      p2Char = c;
+      selectingFor = 1;
+    }
+    updateCardTags();
+    refreshPrompt();
+  });
+  roster.appendChild(card);
+  return { c, card };
+});
+
+function updateCardTags() {
+  cardEls.forEach(({ c, card }) => {
+    card.classList.toggle('selectedP1', p1Char === c);
+    card.classList.toggle('selectedP2', p2Char === c);
+    const tag = card.querySelector('.pickTag');
+    const labels = [];
+    if (p1Char === c) labels.push('<span style="color:var(--accent2)">P1</span>');
+    if (p2Char === c) labels.push('<span style="color:var(--accent)">P2</span>');
+    tag.innerHTML = labels.join(' / ');
+  });
+}
+
+playBtn.addEventListener('click', () => {
+  startGame(p1Char, p2Char);
+});
+
+/* ============ GAME LOGIC ============ */
+const selectScreen = document.getElementById('selectScreen');
+const gameScreen = document.getElementById('gameScreen');
+const resultOverlay = document.getElementById('resultOverlay');
+const canvas = document.getElementById('arena');
+const ctx = canvas.getContext('2d');
+const GROUND_Y = 300;
+const ARENA_W = canvas.width;
+
+let keys = {};
+let prevKeys = {};
+const GAME_KEYS = ['arrowleft','arrowright','arrowup','arrowdown','/',',','.',' '];
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (GAME_KEYS.includes(k)) e.preventDefault();
+  keys[k] = true;
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+function justPressed(k) {
+  return keys[k] && !prevKeys[k];
+}
+
+function makeFighter(charDef, x, facing) {
+  return {
+    def: charDef,
+    x, y: GROUND_Y, vx: 0, vy: 0,
+    w: 46, h: 70,
+    hp: 100, maxHp: 100,
+    facing, // 1 = right, -1 = left
+    onGround: true,
+    state: 'idle', // idle, walk, jump, punch, kick, block, hit, ko
+    actionTimer: 0,
+    hitCooldown: 0,
+    invuln: 0
+  };
+}
+
+let player, rival, gameOver, roundActive;
+
+function startGame(pChar, rChar) {
+  selectScreen.style.display = 'none';
+  resultOverlay.style.display = 'none';
+  gameScreen.style.display = 'flex';
+
+  document.getElementById('p1name').textContent = pChar.name;
+  document.getElementById('p2name').textContent = rChar.name;
+  document.getElementById('p1name').style.color = pChar.color;
+  document.getElementById('p2name').style.color = rChar.color;
+
+  player = makeFighter(pChar, 150, 1);
+  rival = makeFighter(rChar, ARENA_W - 190, -1);
+  gameOver = false;
+  roundActive = true;
+
+  requestAnimationFrame(loop);
+}
+
+function rectsOverlap(a, ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+}
+
+function updateFighterPhysics(f) {
+  f.x += f.vx;
+  f.y += f.vy;
+  if (!f.onGround) f.vy += 0.8;
+  if (f.y >= GROUND_Y) { f.y = GROUND_Y; f.vy = 0; f.onGround = true; }
+  f.x = Math.max(20, Math.min(ARENA_W - f.w - 20, f.x));
+  if (f.actionTimer > 0) f.actionTimer--;
+  else if (f.state === 'punch' || f.state === 'kick' || f.state === 'hit') f.state = 'idle';
+  if (f.hitCooldown > 0) f.hitCooldown--;
+  if (f.invuln > 0) f.invuln--;
+}
+
+function tryAttack(attacker, defender, type) {
+  if (attacker.state === 'punch' || attacker.state === 'kick' || attacker.hitCooldown > 0) return;
+  attacker.state = type;
+  attacker.actionTimer = type === 'punch' ? 14 : 20;
+  attacker.hitCooldown = type === 'punch' ? 18 : 26;
+  const reach = type === 'punch' ? 38 : 50;
+  const dmg = type === 'punch' ? attacker.def.power * 1.1 : attacker.def.power * 1.6;
+
+  setTimeout(() => {
+    if (gameOver) return;
+    const ax = attacker.facing === 1 ? attacker.x + attacker.w : attacker.x - reach;
+    const hitbox = { x: ax, y: attacker.y + 10, w: reach, h: 40 };
+    if (rectsOverlap(null, hitbox.x, hitbox.y, hitbox.w, hitbox.h, defender.x, defender.y, defender.w, defender.h)) {
+      if (defender.invuln > 0) return;
+      let actualDmg = dmg;
+      if (defender.state === 'block') actualDmg *= 0.25;
+      actualDmg *= (1 - defender.def.defense * 0.03);
+      defender.hp = Math.max(0, defender.hp - actualDmg);
+      if (defender.state !== 'block') {
+        defender.state = 'hit';
+        defender.actionTimer = 10;
+        defender.vx = attacker.facing * 3;
+      }
+      defender.invuln = 8;
+      updateHpBars();
+      if (defender.hp <= 0) endRound(attacker === player ? 'PLAYER 1 WINS!' : 'PLAYER 2 WINS!');
+    }
+  }, type === 'punch' ? 90 : 140);
+}
+
+function handlePlayerInput() {
+  if (!roundActive || player.hp <= 0) return;
+  const lockedState = player.state === 'punch' || player.state === 'kick' || player.state === 'hit';
+  player.vx = 0;
+  if (!lockedState) {
+    if (keys['a']) { player.vx = -player.def.speed; player.facing = -1; player.state = 'walk'; }
+    else if (keys['d']) { player.vx = player.def.speed; player.facing = 1; player.state = 'walk'; }
+    else if (keys['l']) { player.state = 'block'; }
+    else { player.state = 'idle'; }
+
+    if (keys['w'] && player.onGround) { player.vy = -player.def.jump; player.onGround = false; player.state = 'jump'; }
+    if (justPressed('j')) tryAttack(player, rival, 'punch');
+    if (justPressed('k')) tryAttack(player, rival, 'kick');
+  }
+}
+
+function handlePlayer2Input() {
+  if (!roundActive || rival.hp <= 0) return;
+  const lockedState = rival.state === 'punch' || rival.state === 'kick' || rival.state === 'hit';
+  rival.vx = 0;
+  if (!lockedState) {
+    if (keys['arrowleft']) { rival.vx = -rival.def.speed; rival.facing = -1; rival.state = 'walk'; }
+    else if (keys['arrowright']) { rival.vx = rival.def.speed; rival.facing = 1; rival.state = 'walk'; }
+    else if (keys['/']) { rival.state = 'block'; }
+    else { rival.state = 'idle'; }
+
+    if (keys['arrowup'] && rival.onGround) { rival.vy = -rival.def.jump; rival.onGround = false; rival.state = 'jump'; }
+    if (justPressed(',')) tryAttack(rival, player, 'punch');
+    if (justPressed('.')) tryAttack(rival, player, 'kick');
+  }
+}
+
+function updateHpBars() {
+  document.getElementById('p1hp').style.width = (player.hp / player.maxHp * 100) + '%';
+  document.getElementById('p2hp').style.width = (rival.hp / rival.maxHp * 100) + '%';
+}
+
+function endRound(text) {
+  gameOver = true;
+  roundActive = false;
+  setTimeout(() => {
+    document.getElementById('resultText').textContent = text;
+    document.getElementById('resultText').style.color = text === 'PLAYER 1 WINS!' ? '#0f9b8e' : '#e94560';
+    resultOverlay.style.display = 'flex';
+  }, 400);
+}
+
+/* ---- drawing ---- */
+function drawFighter(f) {
+  ctx.save();
+  const cx = f.x + f.w/2;
+  const cy = f.y;
+
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(cx, GROUND_Y + f.h + 6, f.w*0.5, 7, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.translate(cx, cy);
+  ctx.scale(f.facing, 1);
+  ctx.translate(-f.w/2, 0);
+
+  const bodyColor = f.state === 'hit' ? '#ffffff' : f.def.color;
+  const flash = f.invuln > 0 && f.invuln % 4 < 2;
+
+  ctx.globalAlpha = flash ? 0.5 : 1;
+
+  // legs
+  ctx.fillStyle = f.def.color2;
+  const legOffset = f.state === 'walk' ? Math.sin(Date.now()/80)*8 : 0;
+  ctx.fillRect(f.w*0.2, f.h*0.6, f.w*0.22, f.h*0.4 - legOffset*0);
+  ctx.fillRect(f.w*0.55, f.h*0.6, f.w*0.22, f.h*0.4);
+
+  // torso
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(f.w*0.18, f.h*0.22, f.w*0.64, f.h*0.42);
+
+  // arms - change with state
+  ctx.fillStyle = bodyColor;
+  if (f.state === 'punch') {
+    ctx.fillRect(f.w*0.75, f.h*0.28, f.w*0.55, f.h*0.16);
+  } else if (f.state === 'kick') {
+    ctx.fillStyle = f.def.color2;
+    ctx.fillRect(f.w*0.7, f.h*0.55, f.w*0.6, f.h*0.14);
+  } else if (f.state === 'block') {
+    ctx.fillRect(f.w*0.55, f.h*0.2, f.w*0.35, f.h*0.35);
+  } else {
+    ctx.fillRect(f.w*0.02, f.h*0.28, f.w*0.2, f.h*0.32);
+    ctx.fillRect(f.w*0.78, f.h*0.28, f.w*0.2, f.h*0.32);
+  }
+
+  // head
+  ctx.fillStyle = f.def.color2;
+  ctx.fillRect(f.w*0.28, f.h*0.02, f.w*0.44, f.h*0.24);
+
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawArena() {
+  ctx.clearRect(0,0,canvas.width, canvas.height);
+  // background gradient handled by CSS; add floor line
+  ctx.fillStyle = '#0e0e22';
+  ctx.fillRect(0, GROUND_Y + 70, canvas.width, 30);
+  ctx.strokeStyle = '#3a3a5c';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y + 70);
+  ctx.lineTo(canvas.width, GROUND_Y + 70);
+  ctx.stroke();
+
+  drawFighter(player);
+  drawFighter(rival);
+}
+
+function loop() {
+  if (!gameOver) {
+    handlePlayerInput();
+    handlePlayer2Input();
+    updateFighterPhysics(player);
+    updateFighterPhysics(rival);
+  }
+  drawArena();
+  prevKeys = { ...keys };
+  requestAnimationFrame(loop);
+}
+
+/* ---- overlay buttons ---- */
+document.getElementById('rematchBtn').addEventListener('click', () => {
+  startGame(player.def, rival.def);
+});
+document.getElementById('menuBtn').addEventListener('click', () => {
+  resultOverlay.style.display = 'none';
+  gameScreen.style.display = 'none';
+  selectScreen.style.display = 'flex';
+  p1Char = null; p2Char = null; selectingFor = 1;
+  updateCardTags();
+  refreshPrompt();
+});
+</script>
+</body>
+</html>
